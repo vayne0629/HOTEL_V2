@@ -1,0 +1,101 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>清掃完成回報</title>
+    <style>
+        body {
+            font-family: system-ui, "Microsoft JhengHei";
+            padding: 20px;
+            background: #f3f3f3;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,.1);
+        }
+
+        .title {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .info {
+            font-size: 18px;
+            margin-bottom: 16px;
+        }
+
+        button {
+            width: 100%;
+            padding: 18px;
+            font-size: 22px;
+            border: none;
+            border-radius: 12px;
+            background: #4CAF50;
+            color: white;
+        }
+
+        .msg {
+            margin-top: 12px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <div class="title">清掃完成回報</div>
+        <div class="info" id="info">讀取中...</div>
+        <button id="btn">✅ 完成送出</button>
+        <div class="msg" id="msg"></div>
+    </div>
+
+    <script>
+  const qs = new URLSearchParams(location.search);
+  const room = qs.get("room");
+  const area = qs.get("area");
+
+  const info = document.getElementById("info");
+  const btn = document.getElementById("btn");
+  const msg = document.getElementById("msg");
+
+  if (!room || !area) {
+    info.textContent = "缺少參數（room / area）";
+    btn.disabled = true;
+  } else {
+    info.textContent = `房號：${room}｜區域：${area}`;
+  }
+
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    msg.textContent = "送出中...";
+
+    try {
+      const res = await fetch("/api/cleaning-qr/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomNumber: room,
+          areaCode: area
+        })
+      });
+
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t);
+      }
+
+      msg.textContent = "✅ 已完成回報！";
+    } catch (e) {
+      msg.textContent = "❌ 送出失敗：" + e.message;
+      btn.disabled = false;
+    }
+  });
+    </script>
+
+</body>
+</html>
