@@ -6,95 +6,201 @@
     <title>清掃完成回報</title>
     <style>
         body {
-            font-family: system-ui, "Microsoft JhengHei";
-            padding: 20px;
+            font-family: system-ui, "Microsoft JhengHei", sans-serif;
+            padding: 18px;
             background: #f3f3f3;
         }
 
         .card {
             background: #fff;
             border-radius: 16px;
-            padding: 20px;
-            box-shadow: 0 2px 12px rgba(0,0,0,.1);
+            padding: 18px;
+            box-shadow: 0 2px 12px rgba(0,0,0,.08);
+            max-width: 520px;
+            margin: 0 auto;
         }
 
         .title {
             font-size: 22px;
-            font-weight: 700;
-            margin-bottom: 12px;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
+
+        .sub {
+            color: #666;
+            margin-bottom: 14px;
+            line-height: 1.45;
+            font-size: 14px;
         }
 
         .info {
             font-size: 18px;
             margin-bottom: 16px;
+            padding: 12px 14px;
+            background: #f7f7f7;
+            border-radius: 12px;
+            border: 1px solid #eee;
+            line-height: 1.6;
         }
 
         button {
             width: 100%;
-            padding: 18px;
-            font-size: 22px;
+            padding: 16px;
+            font-size: 20px;
             border: none;
             border-radius: 12px;
             background: #4CAF50;
             color: white;
+            font-weight: 800;
+            cursor: pointer;
         }
+
+            button:disabled {
+                opacity: .55;
+                cursor: not-allowed;
+            }
 
         .msg {
             margin-top: 12px;
-            font-size: 16px;
+            font-size: 15px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        .ok {
+            color: #1b7f2a;
+        }
+
+        .err {
+            color: #b00020;
+        }
+
+        .small {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #888;
+            word-break: break-all;
+        }
+
+        .chip {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: #e9f7ec;
+            color: #1b7f2a;
+            font-size: 12px;
+            margin-left: 6px;
+            border: 1px solid #cdebd2;
         }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <div class="title">清掃完成回報</div>
+        <div class="title">清掃完成回報 <span id="envChip" class="chip" style="display:none;"></span></div>
+        <div class="sub">
+            請確認房號與區域正確後再送出。<br />
+            若送出失敗，訊息會顯示 HTTP 狀態碼與後端回應，方便你直接查問題。
+        </div>
+
         <div class="info" id="info">讀取中...</div>
+
         <button id="btn">✅ 完成送出</button>
         <div class="msg" id="msg"></div>
+
+        <div class="small" id="debug"></div>
     </div>
 
     <script>
-  const qs = new URLSearchParams(location.search);
-  const room = qs.get("room");
-  const area = qs.get("area");
+        // =========================
+        // 你如果想強制指定 API 網域（例如 confirm.html 放別的主機）
+        // 就把下面改成你的 Render 網域，例如：
+        // const API_BASE = "https://xxx.onrender.com";
+        // 若留空字串，就會使用同網域（最推薦：confirm.html 放在 wwwroot）
+        // =========================
+        const API_BASE = ""; // "" = 同網域
 
-  const info = document.getElementById("info");
-  const btn = document.getElementById("btn");
-  const msg = document.getElementById("msg");
+        const qs = new URLSearchParams(location.search);
+        const room = (qs.get("room") || "").trim();
+        const area = (qs.get("area") || "").trim();
 
-  if (!room || !area) {
-    info.textContent = "缺少參數（room / area）";
-    btn.disabled = true;
-  } else {
-    info.textContent = `房號：${room}｜區域：${area}`;
-  }
+        const info = document.getElementById("info");
+        const btn = document.getElementById("btn");
+        const msg = document.getElementById("msg");
+        const debug = document.getElementById("debug");
+        const envChip = document.getElementById("envChip");
 
-  btn.addEventListener("click", async () => {
-    btn.disabled = true;
-    msg.textContent = "送出中...";
+        const apiBase = API_BASE || location.origin;
+        const endpoint = `${apiBase}/api/cleaning-qr/complete`;
 
-    try {
-      const res = await fetch("/api/cleaning-qr/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          roomNumber: room,
-          areaCode: area
-        })
-      });
+        function setMsg(text, type) {
+            msg.className = "msg " + (type || "");
+            msg.textContent = text || "";
+        }
 
-      if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t);
-      }
+        function setInfo() {
+            if (!room || !area) {
+                info.textContent = "❌ 缺少參數（room / area）\n請確認 QRCode 是否包含 ?room=房號&area=區域";
+                btn.disabled = true;
+                setMsg("請重新掃描正確的 QRCode。", "err");
+                return;
+            }
 
-      msg.textContent = "✅ 已完成回報！";
-    } catch (e) {
-      msg.textContent = "❌ 送出失敗：" + e.message;
-      btn.disabled = false;
-    }
-  });
+            info.textContent = `房號：${room}\n區域：${area}`;
+            btn.disabled = false;
+        }
+
+        // 顯示目前使用的 API 來源（方便你確認是否同網域 / 指定網域）
+        if (API_BASE) {
+            envChip.style.display = "inline-block";
+            envChip.textContent = "指定 API 網域";
+        } else {
+            envChip.style.display = "inline-block";
+            envChip.textContent = "同網域模式";
+        }
+
+        debug.textContent =
+            `目前頁面：${location.origin}${location.pathname}\n` +
+            `API Endpoint：${endpoint}`;
+
+        setInfo();
+
+        btn.addEventListener("click", async () => {
+            if (btn.disabled) return;
+
+            btn.disabled = true;
+            setMsg("送出中...請稍候", "");
+
+            try {
+                const payload = {
+                    roomNumber: room,
+                    areaCode: area
+                };
+
+                const res = await fetch(endpoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                // 盡量把後端回應讀出來（成功或失敗都可能有內容）
+                const text = await res.text();
+
+                if (!res.ok) {
+                    // 顯示狀態碼 + 後端回應，最好除錯
+                    throw new Error(`HTTP ${res.status}\n${text || "(no response body)"}`);
+                }
+
+                setMsg("✅ 已完成回報！你可以關閉此頁面。", "ok");
+                // 成功後保持 disabled，避免重複送出
+                btn.textContent = "✅ 已送出";
+                btn.disabled = true;
+
+            } catch (e) {
+                setMsg("❌ 送出失敗：\n" + (e && e.message ? e.message : e), "err");
+                btn.disabled = false;
+            }
+        });
     </script>
 
 </body>
