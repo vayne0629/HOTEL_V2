@@ -3,98 +3,276 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>清掃完成回報</title>
+    <title>清掃回報</title>
     <style>
         body {
-            font-family: system-ui, "Microsoft JhengHei";
-            padding: 20px;
+            font-family: system-ui, "Microsoft JhengHei", sans-serif;
+            padding: 18px;
             background: #f3f3f3;
         }
 
         .card {
             background: #fff;
             border-radius: 16px;
-            padding: 20px;
-            box-shadow: 0 2px 12px rgba(0,0,0,.1);
+            padding: 18px;
+            box-shadow: 0 2px 12px rgba(0,0,0,.08);
+            max-width: 520px;
+            margin: 0 auto;
         }
 
         .title {
             font-size: 22px;
-            font-weight: 700;
-            margin-bottom: 12px;
+            font-weight: 900;
+            margin-bottom: 10px;
+        }
+
+        .sub {
+            color: #666;
+            margin-bottom: 14px;
+            line-height: 1.45;
+            font-size: 14px;
         }
 
         .info {
             font-size: 18px;
             margin-bottom: 16px;
+            padding: 12px 14px;
+            background: #f7f7f7;
+            border-radius: 12px;
+            border: 1px solid #eee;
+            line-height: 1.6;
         }
+
+            .info .big {
+                font-size: 20px;
+                font-weight: 900;
+            }
 
         button {
             width: 100%;
-            padding: 18px;
-            font-size: 22px;
+            padding: 16px;
+            font-size: 20px;
             border: none;
             border-radius: 12px;
             background: #4CAF50;
             color: white;
+            font-weight: 900;
+            cursor: pointer;
         }
+
+            button:disabled {
+                opacity: .55;
+                cursor: not-allowed;
+            }
 
         .msg {
             margin-top: 12px;
-            font-size: 16px;
+            font-size: 15px;
+            line-height: 1.5;
+            white-space: pre-wrap;
         }
+
+        .ok {
+            color: #1b7f2a;
+        }
+
+        .err {
+            color: #b00020;
+        }
+
+        .doneBox {
+            margin-top: 14px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: #f0fff3;
+            border: 1px solid #cdebd2;
+            display: none;
+        }
+
+            .doneBox .t1 {
+                font-weight: 900;
+                font-size: 16px;
+                margin-bottom: 6px;
+            }
+
+            .doneBox .t2 {
+                font-size: 14px;
+                color: #2c6b37;
+                line-height: 1.45;
+            }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <div class="title">清掃完成回報</div>
+        <div class="title" id="title">清掃回報</div>
+        <div class="sub" id="sub">
+            請確認房號與區域正確後再送出。
+        </div>
+
         <div class="info" id="info">讀取中...</div>
+
         <button id="btn">✅ 完成送出</button>
         <div class="msg" id="msg"></div>
+
+        <div class="doneBox" id="doneBox">
+            <div class="t1">✅ 已送出</div>
+            <div class="t2" id="doneText"></div>
+        </div>
     </div>
 
     <script>
-  const qs = new URLSearchParams(location.search);
-  const room = qs.get("room");
-  const area = qs.get("area");
+        // 若 confirm.html 跟 API 同網域（你現在就是），API_BASE 保持空字串即可。
+        // 若未來把 confirm.html 放別的主機，才需要改成你的 API 網域：
+        // const API_BASE = "https://hotel-v2.onrender.com";
+        const API_BASE = "";
 
-  const info = document.getElementById("info");
-  const btn = document.getElementById("btn");
-  const msg = document.getElementById("msg");
+        const qs = new URLSearchParams(location.search);
+        const room = (qs.get("room") || "").trim();
+        const area = (qs.get("area") || "").trim();
 
-  if (!room || !area) {
-    info.textContent = "缺少參數（room / area）";
-    btn.disabled = true;
-  } else {
-    info.textContent = `房號：${room}｜區域：${area}`;
-  }
+        const titleEl = document.getElementById("title");
+        const subEl = document.getElementById("sub");
+        const infoEl = document.getElementById("info");
+        const btn = document.getElementById("btn");
+        const msgEl = document.getElementById("msg");
 
-  btn.addEventListener("click", async () => {
-    btn.disabled = true;
-    msg.textContent = "送出中...";
+        const doneBox = document.getElementById("doneBox");
+        const doneText = document.getElementById("doneText");
 
-    try {
-      const res = await fetch("/api/cleaning-qr/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          roomNumber: room,
-          areaCode: area
-        })
-      });
+        const apiBase = API_BASE || location.origin;
+        const endpoint = `${apiBase}/api/cleaning-qr/complete`;
 
-      if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t);
-      }
+        function setMsg(text, type) {
+            msgEl.className = "msg " + (type || "");
+            msgEl.textContent = text || "";
+        }
 
-      msg.textContent = "✅ 已完成回報！";
-    } catch (e) {
-      msg.textContent = "❌ 送出失敗：" + e.message;
-      btn.disabled = false;
-    }
-  });
+        function areaToZh(code) {
+            const c = (code || "").trim().toUpperCase();
+
+            // 你指定：BED -> 床鋪區
+            // 我順便幫你把常見區域也一起中文化（你之後用 QR 會更直覺）
+            const map = {
+                "BED": "床鋪區",
+                "BATH": "浴室區",
+                "FLOOR": "地板區",
+                "SUP": "主管檢查",
+                "SUPERVISOR": "主管檢查",
+                "MINI": "備品區",
+                "TRASH": "垃圾區"
+            };
+
+            return map[c] || code; // 不在表內就顯示原碼
+        }
+
+        function formatNow() {
+            // 用台灣時間顯示：YYYY/MM/DD HH:mm:ss
+            const d = new Date();
+            const pad = (n) => String(n).padStart(2, "0");
+            const yyyy = d.getFullYear();
+            const mm = pad(d.getMonth() + 1);
+            const dd = pad(d.getDate());
+            const hh = pad(d.getHours());
+            const mi = pad(d.getMinutes());
+            const ss = pad(d.getSeconds());
+            return `${yyyy}/${mm}/${dd} ${hh}:${mi}:${ss}`;
+        }
+
+        function renderPage() {
+            if (!room || !area) {
+                titleEl.textContent = "清掃回報";
+                infoEl.textContent = "❌ 缺少參數（room / area）\n請確認 QRCode 是否包含 ?room=房號&area=區域";
+                btn.disabled = true;
+                setMsg("請重新掃描正確的 QRCode。", "err");
+                return;
+            }
+
+            const areaZh = areaToZh(area);
+
+            // 你要的標題：201床鋪清掃回報（依房號/區域動態）
+            titleEl.textContent = `${room}${areaZh}清掃回報`;
+
+            // 內容顯示更醒目
+            infoEl.innerHTML = `
+            <div class="big">房號：${room}</div>
+            <div class="big">區域：${areaZh}</div>
+          `;
+
+            btn.disabled = false;
+            setMsg("", "");
+        }
+
+        function showDoneAndRedirect(doneAt) {
+            // 成功後：顯示完成時間、按鈕灰化、文字改已送出
+            btn.textContent = "✅ 已送出";
+            btn.disabled = true;
+
+            doneBox.style.display = "block";
+            doneText.textContent =
+                `完成時間：${doneAt}\n` +
+                `（2 秒後將顯示「已完成」頁面）`;
+
+            // 2 秒後導到同頁完成畫面（避免瀏覽器阻擋自動關閉）
+            setTimeout(() => {
+                // 用 hash 讓使用者回來仍是完成狀態
+                location.hash = "done";
+
+                // 顯示一個乾淨的「已完成」畫面（同頁替換內容）
+                titleEl.textContent = "✅ 已完成";
+                subEl.textContent = "回報已送出，您可以關閉此頁面。";
+                infoEl.innerHTML = `
+              <div class="big">房號：${room}</div>
+              <div class="big">區域：${areaToZh(area)}</div>
+              <div style="margin-top:10px;font-size:14px;color:#2c6b37;">
+                完成時間：${doneAt}
+              </div>
+            `;
+                setMsg("", "");
+            }, 2000);
+        }
+
+        renderPage();
+
+        // 如果使用者重新整理且 hash=done，保持完成畫面（避免重複送出）
+        if (location.hash === "#done" && room && area) {
+            const doneAt = formatNow();
+            showDoneAndRedirect(doneAt);
+        }
+
+        btn.addEventListener("click", async () => {
+            if (btn.disabled) return;
+
+            btn.disabled = true;
+            setMsg("送出中...請稍候", "");
+
+            try {
+                const payload = {
+                    roomNumber: room,
+                    areaCode: area
+                };
+
+                const res = await fetch(endpoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                const text = await res.text();
+
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}\n${text || "(no response body)"}`);
+                }
+
+                const doneAt = formatNow();
+                setMsg("✅ 已完成回報！", "ok");
+                showDoneAndRedirect(doneAt);
+
+            } catch (e) {
+                setMsg("❌ 送出失敗：\n" + (e && e.message ? e.message : e), "err");
+                btn.disabled = false;
+            }
+        });
     </script>
 
 </body>

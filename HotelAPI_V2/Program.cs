@@ -31,6 +31,9 @@ app.UseSwaggerUI();
 app.UseHttpsRedirection();
 app.UseAuthorization();
 
+app.UseDefaultFiles();  // 可有可無（通常配 index.html）
+app.UseStaticFiles();   // 這行一定要有，沒有就永遠開不到 confirm.html
+
 app.MapControllers();
 
 app.Run();
